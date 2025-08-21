@@ -1,3 +1,5 @@
 envs
 vector_store
 data
+__pycache__/
+*.pyc
