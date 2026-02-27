@@ -1,50 +1,89 @@
-# FastFood-Project
+# RAG-LLM-pipeline — Local RAG over PDF
 
-## Setup Instructions
-Considering you already have git and conda installed:
+A local Retrieval-Augmented Generation (RAG) application that:
+- parses PDF documents (layout-aware + OCR),
+- builds a FAISS vector index,
+- retrieves relevant chunks using LangChain,
+- generates answers with a local LLM (Ollama),
+- provides an interactive Streamlit interface.
 
-Linux system required
-1. **Install ollama**:
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-```
-2. **Install ollama models**:
-```bash
+## Environment
+
+Python 3.10 recommended.
+
+
+## Ollama Setup
+
+This project uses a local LLM served by **Ollama**.
+
+**Tested on Linux.**\
+Ollama is also officially available on Windows and macOS, but these
+platforms were not tested.
+
+### Install Ollama
+
+Follow the official installation instructions:\
+https://docs.ollama.com/
+
+### Download a model
+
+``` bash
 ollama pull mistral
 ```
-3. **Clone the repository**:
-```bash
-git clone https://github.com/tovantrang/FastFood-Project.git
-cd FastFood-Project
-```
-4. **Create and activate a conda environment**:
-```bash
-conda create -p ./envs python=3.10 -y
-conda activate ./envs
-```
-5. **Install the required packages**:
-```bash
-pip install pymupdf pdfplumber
-pip install "marker-pdf[all]"
-pip install pytesseract
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126
-pip install layoutparser[layoutmodels,tesseract]
-pip install sentence-transformers
-pip install git+https://github.com/openai/CLIP.git
-pip install faiss-cpu
-pip install langchain langchain_community huggingface_hub openai
-pip install streamlit
-```
-6. **Test the installation**:
-```bash
-python -c "import torch; print(f'CUDA dispo: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"Aucun\"}')"
-```
-```bash
+
+This downloads the model locally (no execution yet).
+
+### Run the model (interactive test)
+
+``` bash
 ollama run mistral
 ```
 
+-   Starts an interactive CLI session.
+-   If the model is not downloaded, it will automatically download it
+    first.
+-   Exit with `Ctrl + D` or `/exit`.
+
+### Local API
+
+Ollama exposes a local API by default at:
+
+    http://127.0.0.1:11434
+
+The Streamlit app connects to this local API.
+
+
+## Linux Service Management (optional)
+
+On Linux, Ollama may run as a systemd service.
+
+Check status:
+
+``` bash
+sudo systemctl status ollama
+```
+
+Stop:
+
+``` bash
+sudo systemctl stop ollama
+```
+
+Start:
+
+``` bash
+sudo systemctl start ollama
+```
+
+Restart:
+
+``` bash
+sudo systemctl restart ollama
+```
+
+
 ## Usage Instructions
-With the pdf in a "data" folder:
+With the PDF files in a "data" folder:
 
 1. **Ingest data**:
 ```bash
