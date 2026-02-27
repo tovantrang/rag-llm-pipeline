@@ -3,11 +3,11 @@ import math
 import os
 
 import streamlit as st
-from langchain.prompts import PromptTemplate
-from langchain.retrievers.multi_query import LineListOutputParser
+from langchain_classic.retrievers.multi_query import LineListOutputParser
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.llms import Ollama
 from langchain_community.vectorstores import FAISS
+from langchain_core.prompts import PromptTemplate
 from sentence_transformers.cross_encoder import CrossEncoder
 
 import config
@@ -125,7 +125,7 @@ class CustomRetrievalQA:
             else:
                 prompt_text = subquery
             print(f"Prompt: {prompt_text}")
-            response = self.llm(prompt_text)
+            response = self.llm.invoke(prompt_text)
             results["source_documents"].append(docs)
             results["responses"].append(response)
             results["subqueries"].append(subquery)
