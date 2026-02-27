@@ -12,26 +12,51 @@ from sentence_transformers.cross_encoder import CrossEncoder
 
 import config
 from multiretriever import MultiQueryRerankRetriever
-# --- Imports LangChain ---
-# --- Import du modèle de Re-Ranking ---
 
 
-# #####################################################################################
-# 1. DÉFINITION DE NOTRE RE-RANKER PERSONNALISÉ AVEC SEUIL
-# #####################################################################################
 class ThresholdReranker:
+    """Rerank and filter retrieved documents using a Cross-Encoder score threshold.
+
+    This component scores each (query, document) pair using a Cross-Encoder model,
+    applies a sigmoid transformation to obtain values in [0, 1], and retains only
+    documents whose sigmoid score exceeds the configured threshold.
+
+    It returns both the filtered documents and their associated raw and sigmoid
+    scores for debugging and inspection.
+
+    Attributes:
+        model: Cross-Encoder model exposing a `predict(pairs)` method returning
+            relevance logits/scores for (query, text) pairs.
+        threshold (float): Minimum sigmoid score required to keep a document.
+        k (int): Intended maximum number of documents to keep. Note: in the
+            current implementation, `k` is stored but not enforced.
+    """
+
     def __init__(self, model, threshold=0.3, k=5):
         self.model = model
         self.threshold = threshold
         self.k = k
 
     def rerank(self, docs, query):
+        """Score, filter, and return documents relevant to the query.
+
+        Args:
+            docs: Candidate documents (typically retrieved from a vector store).
+                Each document must expose a `page_content` string attribute.
+            query (str): Query text used to compute relevance scores.
+
+        Returns:
+            dict: A dictionary with:
+                - "docs": Filtered documents whose sigmoid(score) > threshold.
+                - "scores": List of tuples (raw_score, sigmoid_score) aligned
+                  with "docs".
+        """
         pairs = [(query, doc.page_content) for doc in docs]
         scores = self.model.predict(pairs)
         docs_with_scores = zip(docs, scores)
         results = {"docs": [], "scores": []}
         for doc, score in docs_with_scores:
-            sigmoid = 1 / (1 + math.exp(-score))  # Apply sigmoid to score
+            sigmoid = 1 / (1 + math.exp(-score))
             if sigmoid > self.threshold:
                 results["docs"].append(doc)
                 results["scores"].append((score, sigmoid))
@@ -39,6 +64,28 @@ class ThresholdReranker:
 
 
 class CustomRetrievalQA:
+    """Custom Retrieval-Augmented Generation (RAG) chain with multi-query support.
+
+    This class orchestrates a RAG workflow by:
+      1. Expanding the original query into multiple subqueries (handled by the
+         injected retriever).
+      2. Retrieving documents for each subquery.
+      3. Building a context string from retrieved document chunks.
+      4. Formatting a prompt with (context, question) and calling the LLM.
+      5. Returning rich debug outputs (subqueries, prompts, scores, sources).
+
+    This is designed for transparency and debugging: it surfaces intermediate
+    artifacts that are typically hidden in higher-level LangChain chains.
+
+    Attributes:
+        llm: Callable LLM interface. Must be callable as `llm(prompt_text)`.
+        chain_type (str): Chain composition strategy indicator (e.g., "stuff").
+            Stored for bookkeeping; not used directly in the current implementation.
+        retriever: Retriever object implementing
+            `get_relevant_documents_multi_query(query)`.
+        prompt: Optional prompt template exposing `format(context=..., question=...)`.
+    """
+
     def __init__(self, llm, chain_type, retriever, prompt):
         self.llm = llm
         self.chain_type = chain_type
@@ -46,6 +93,20 @@ class CustomRetrievalQA:
         self.prompt = prompt
 
     def invoke(self, query):
+        """Run the RAG pipeline for a user query and return detailed results.
+
+        Args:
+            query (str): User query.
+
+        Returns:
+            dict: Dictionary containing:
+                - "query": Original user query.
+                - "responses": LLM responses, one per generated subquery.
+                - "source_documents": Retrieved documents per subquery.
+                - "subqueries": Generated subqueries.
+                - "prompts": Final prompts sent to the LLM (for debugging).
+                - "scores": Reranker scores per subquery (format depends on retriever).
+        """
         results = {
             "query": query,
             "responses": [],
@@ -73,14 +134,21 @@ class CustomRetrievalQA:
         return results
 
 
-# #####################################################################################
-# 2. FONCTIONS DE CHARGEMENT ET DE CRÉATION DE LA CHAÎNE RAG
-# #####################################################################################
-
-
 @st.cache_resource
 def load_vector_store():
-    """Charge la base vectorielle FAISS depuis le disque."""
+    """Load and cache the FAISS vector store from disk.
+
+    This function initializes the embedding model used by the vector store and
+    loads a FAISS index from local storage. The embedding configuration must be
+    consistent with the one used at ingestion time to ensure correct similarity
+    search behavior.
+
+    The result is cached using Streamlit's resource cache to avoid repeated disk
+    I/O and model initialization across app reruns.
+
+    Returns:
+        FAISS: Loaded FAISS vector store ready for retrieval.
+    """
     print("Loading vector store and embedding model...")
     embeddings = HuggingFaceEmbeddings(
         model_name=config.EMBEDDING_MODEL_NAME,
@@ -97,9 +165,23 @@ def load_vector_store():
 
 @st.cache_resource
 def create_rag_chain(_vector_store):
-    """
-    Crée la chaîne RAG complète en utilisant le retriever de base et notre
-    re-ranker personnalisé.
+    """Create and cache the full RAG chain with multi-query retrieval and reranking.
+
+    This function builds a complete RAG pipeline:
+      - Base retrieval from the FAISS vector store (top-k candidates).
+      - Multi-query generation using an LLM chain (prompt → LLM → line parser).
+      - Cross-Encoder reranking and filtering using `ThresholdReranker`.
+      - Final answer generation using a context-injected prompt ("stuff" strategy).
+
+    The resulting chain is cached using Streamlit's resource cache to prevent
+    redundant initialization across app reruns.
+
+    Args:
+        _vector_store (FAISS): Loaded FAISS vector store used to create the base retriever.
+
+    Returns:
+        CustomRetrievalQA: Configured RAG chain that returns detailed intermediate
+        artifacts (subqueries, prompts, scores, source documents).
     """
     print("Creating RAG chain with ThresholdReranker...")
     llm = Ollama(
@@ -117,7 +199,9 @@ def create_rag_chain(_vector_store):
     output_parser = LineListOutputParser()
     llm_chain = retrival_prompt | llm | output_parser
     cross_encoder_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    reranker = ThresholdReranker(model=cross_encoder_model, threshold=0.5, k=5)
+    reranker = ThresholdReranker(
+        model=cross_encoder_model, threshold=config.RERANKER_THRESHOLD, k=5
+    )
     retriever = MultiQueryRerankRetriever(base_retriever, llm_chain, reranker)
 
     prompt = PromptTemplate(
@@ -134,10 +218,7 @@ def create_rag_chain(_vector_store):
     return rag_chain
 
 
-# #####################################################################################
-# 3. INTERFACE UTILISATEUR STREAMLIT
-# #####################################################################################
-
+# --- Streamlit App ---
 st.set_page_config(page_title="University Document Q&A", layout="wide")
 st.title("🎓 University Document Q&A System")
 

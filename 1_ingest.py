@@ -15,12 +15,11 @@ import config
 
 
 def ingest_data():
+    """Ingest PDFs into a FAISS index using Marker for structured extraction.
+
+    Marker is used to preserve layout-aware text extraction before chunking
+    and embedding, improving retrieval quality.
     """
-    Reads all PDF documents from the data path, processes them into
-    markdown, splits by markdown headers, further chunks within
-    sections, and stores embeddings in a FAISS vector store.
-    """
-    # 1. Load Documents
     pdf_files = glob.glob(os.path.join(config.PDF_DATA_PATH, "*.pdf"))
     if not pdf_files:
         print("No PDF files found in the data directory. Aborting.")
@@ -40,13 +39,11 @@ def ingest_data():
             print(f"Error processing {pdf_file}: {str(e)}")
             continue
 
-    # 2. Create Embeddings
     print(f"Loading embedding model: {config.EMBEDDING_MODEL_NAME}")
     embeddings = HuggingFaceEmbeddings(
         model_name=config.EMBEDDING_MODEL_NAME, model_kwargs={"device": config.DEVICE}
     )
 
-    # 3. Markdown header-based splitting
     headers_to_split_on = [("#", "Header 1"), ("##", "Header 2")]
     md_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=headers_to_split_on,
@@ -56,7 +53,7 @@ def ingest_data():
     all_section_docs = []
     for doc in documents:
         section_docs = md_splitter.split_text(doc.page_content)
-        # Carry over the original metadata (PDF source) to each chunk
+        # metadata (PDF source) to each chunk
         for sec_doc in section_docs:
             header_1 = sec_doc.metadata.get("Header 1", "")
             header_2 = sec_doc.metadata.get("Header 2", "")
@@ -66,7 +63,6 @@ def ingest_data():
 
         all_section_docs.extend(section_docs)
 
-    # 4. Further chunk inside each section for embeddings
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=config.CHUNK_SIZE,
         chunk_overlap=config.CHUNK_OVERLAP,
@@ -75,7 +71,6 @@ def ingest_data():
 
     print(f"Split {len(documents)} markdown docs into {len(chunked_docs)} chunks.")
 
-    # 5. Create and Save Vector Store
     print("Creating FAISS vector store...")
     vector_store = FAISS.from_documents(chunked_docs, embeddings)
     vector_store.save_local(config.VECTOR_STORE_PATH)

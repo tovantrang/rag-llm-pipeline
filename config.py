@@ -1,5 +1,3 @@
-# config.py
-
 DEVICE = "cuda"
 
 # --- Paths ---
@@ -17,6 +15,8 @@ CHUNK_OVERLAP = 128
 # --- Vector Store ---
 # Number of relevant chunks to retrieve for context
 K_RETRIEVED_CHUNKS = 5
+# Threshold for reranker's filtering
+RERANKER_THRESHOLD = 0.3
 
 # --- Local LLM ---
 # The model name as served by Ollama
