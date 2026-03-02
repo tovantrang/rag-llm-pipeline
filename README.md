@@ -46,7 +46,7 @@ A local Retrieval-Augmented Generation (RAG) application that:
 
 ## Environment
 
-Python 3.10 recommended.
+Python 3.10-11 recommended.
 
 ## Ollama Setup
 
