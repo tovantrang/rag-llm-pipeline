@@ -46,7 +46,22 @@ A local Retrieval-Augmented Generation (RAG) application that:
 
 ## Environment
 
-Python 3.10-11 recommended.
+Python 3.10–3.11 recommended. Run the commands below from the repository root.
+
+### Install Python dependencies
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+### Embedding device
+
+`config.py` sets `DEVICE = "cuda"` by default. The embedding and reranking models
+therefore require a CUDA-capable NVIDIA GPU and a working CUDA-enabled PyTorch
+installation. The pinned `requirements.txt` includes CUDA 12 PyTorch packages;
+make sure your NVIDIA driver supports them. On a machine without a compatible
+GPU/CUDA setup, change `DEVICE` in `config.py` to `"cpu"` before ingesting data
+(CPU processing will be slower).
 
 ## Ollama Setup
 
@@ -117,15 +132,18 @@ sudo systemctl restart ollama
 
 ## Usage Instructions
 
-With the PDF files in a "data" folder:
+Before starting, install the Python dependencies above and make sure the Ollama
+server is running with the `mistral` model available (see Ollama Setup). Put the
+PDF files to ingest in the `data/` folder; the ingestion script writes processed
+documents and the vector store to the configured output folders.
 
-1. **Ingest data**:
+1. **Ingest the PDFs** (run once, and again when the source PDFs change):
 
 ```bash
 python 1_ingest.py
 ```
 
-2. **Run the Streamlit app**:
+2. **Start the Streamlit app**:
 
 ```bash
 streamlit run 2_app.py
